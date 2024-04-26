@@ -7,7 +7,7 @@ from collections import OrderedDict
 class BasicBlock(nn.Module):
     def __init__(self, in_channel, channels):
         super(BasicBlock, self).__init__()
-        print("input={},output={}".format(in_channel, channels[0]))
+        # print("input={},output={}".format(in_channel, channels[0]))
         self.conv1 = nn.Conv2d(in_channels=in_channel,
                                out_channels=channels[0],
                                kernel_size=1, stride=1, padding=0,
