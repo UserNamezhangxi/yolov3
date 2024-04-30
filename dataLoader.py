@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data.dataset import Dataset
 from PIL import Image
 import numpy as np
@@ -25,7 +26,7 @@ class YoloDataset(Dataset):
         self.lines = open(train_path, 'r').readlines()
 
     def __len__(self):
-        len(self.lines)
+        return len(self.lines)
 
     def __getitem__(self, index):
         img, boxes = self.get_item_data(index)
@@ -73,6 +74,24 @@ class YoloDataset(Dataset):
 
         return image_data, box
 
+
+def yolo_dataset_collate(batch):
+    # 方法1
+    # images = []
+    # bboxes = []
+    # for img, box in batch:
+    #     images.append(img)
+    #     bboxes.append(box)
+    #
+    # images = torch.from_numpy(np.array(images)).type(torch.FloatTensor)
+    # bboxes = [torch.from_numpy(ann).type(torch.FloatTensor) for ann in bboxes]
+    # return images, bboxes
+
+    # 方法2
+    images, targets = tuple(zip(*batch))
+    images = torch.from_numpy(np.array(images)).type(torch.FloatTensor)
+    bboxes = [torch.from_numpy(ann).type(torch.FloatTensor) for ann in targets]
+    return images, bboxes
 
 if __name__ == "__main__":
     dataset = YoloDataset('2007_train.txt', True)

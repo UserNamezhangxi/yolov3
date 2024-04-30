@@ -1,2 +1,9 @@
 .idea
 model
+dataset
+
+nets/__init__.py
+nets/__pycache__/
+__pycache__/
+2007_test.txt
+2007_train.txt

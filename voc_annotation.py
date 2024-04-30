@@ -4,13 +4,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-
-def get_classes(classes_path):
-    with open(classes_path, encoding='utf-8') as f:
-        class_names = f.readlines()
-    class_names = [c.strip() for c in class_names]
-    return class_names, len(class_names)
-
+from utils.utils import get_classes
 
 classes, classes_len = get_classes('dataset/voc_classes.txt')
 
