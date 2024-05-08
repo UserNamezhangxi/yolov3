@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn.init
 from torch import nn
 import math
@@ -60,6 +61,12 @@ class YOLOLoss(nn.Module):
         # 获取网络应有的预测结果
         y_true, noobj_mask, box_loss_scale = self.get_target(l, targets, scaled_anchors, in_h, in_w)
 
+        #---------------------------------------------------------------#
+        #   将预测结果进行解码，判断预测结果和真实值的重合程度
+        #   如果重合程度过大则忽略，因为这些特征点属于预测比较准确的特征点
+        #   作为负样本不合适
+        #----------------------------------------------------------------#
+        noobj_mask, pred_boxes = self.get_ignore(l, x, y, h, w, targets, scaled_anchors, in_h, in_w, noobj_mask)
 
         pass
 
@@ -76,25 +83,25 @@ class YOLOLoss(nn.Module):
         y_true = torch.zeros(bs, len(self.anchors_mask[l]), in_h, in_w, 25, requires_grad=False)
 
         for b in range(bs):
-            if targets[b] == 0: # 背景忽略
+            if len(targets[b]) == 0: # 没有真实框，忽略
                 continue
 
             batch_target = torch.zeros_like(targets[b])
 
             # 将 tensor target * 输入特征图的高宽，获得真实框在特征图上的中心点坐标值和宽高值
-            batch_target[:, [0, 2]] = batch_target[b][:, [0, 2]] * in_h
-            batch_target[:, [1, 3]] = batch_target[b][:, [1, 3]] * in_w
-            batch_target[:, 4] = batch_target[b][:, 4]
-            batch_target = batch_target.to(self.device)
+            batch_target[:, [0, 2]] = targets[b][:, [0, 2]] * in_h
+            batch_target[:, [1, 3]] = targets[b][:, [1, 3]] * in_w
+            batch_target[:, 4] = targets[b][:, 4]
+            batch_target = batch_target.cpu()
 
             # 将真实框和anchors 的框框左上角重合计算iou，看是属于哪一个范围内的框框（例如计算出来的可能是13*13里的大物体或者26*26中等物体52*52 小物体）
             # torch.zeros(batch_target.size(0), 2)  一个图中有多少个真实框
             # batch_target[:, 2:4] 拿到真实框的右下角坐标
             #  num_true_box, 4  将中心点固定在0,0 组成 （0,0,高,宽）样子的坐标
-            gt_box = torch.FloatTensor(torch.cat((torch.zeros((batch_target.size(0), 2)),  batch_target[:, 2:4]), dim=1))
+            gt_box = torch.FloatTensor(torch.cat((torch.zeros((batch_target.size(0), 2)), batch_target[:, 2:4]), dim=1))
 
             # 将中心点固定在0,0 组成 （0，0，高，宽）样子的坐标
-            anchor_boxes = torch.cat((torch.zeros(len(scaled_anchors), 2), scaled_anchors))
+            anchor_boxes = torch.cat((torch.zeros(len(scaled_anchors), 2), torch.FloatTensor(scaled_anchors)), dim=1)
 
             # 这样以来就能固定中心点，计算真实框 和 每一个anchors 的 iou 从而得到当前真实框是属于哪一个类型的anchors,比如大目标的框、中等目标的框、小目标的框
             # 这里就是在计算 当前真实框是属于哪个目标范围框框内的的最大的iou
@@ -135,6 +142,43 @@ class YOLOLoss(nn.Module):
                 # ----------------------------------------#
                 box_loss_scale[b, k, i, j] = batch_target[t, 2] * batch_target[t, 3] / in_w / in_h
         return y_true, noobj_mask, box_loss_scale
+
+    def get_ignore(self, l, x, y, h, w, targets, scaled_anchors, in_h, in_w, noobj_mask):
+        print("in_h={},in_w={}".format(in_h, in_w))
+        print(l)
+        print(self.anchors_mask[l])
+        bs = len(targets)
+
+        # start(float) - 区间的起始点
+        # end (float) - 区间的终点
+        # steps(int）- 在start 和 end间生成的样本数
+        # 这里就是在构造网格,x 方向从 0....12  y 方向从 0...12
+        grid_x = (torch.linspace(0, in_w - 1, in_w).repeat(in_h, 1)
+                  .repeat(int(bs * len(self.anchors_mask[l])), 1, 1)
+                  .view(x.shape)
+                  .type_as(x))
+        grid_y = (torch.linspace(0, in_h - 1, in_h)
+                  .repeat(in_w, 1)
+                  .t()
+                  .repeat(int(bs * len(self.anchors_mask[l])), 1, 1)
+                  .view(y.shape)
+                  .type_as(y))
+
+        # 生成对应层l 的 先验框的宽高
+        scaled_anchors_l = np.array(scaled_anchors)[self.anchors_mask[l]]
+        anchor_w = torch.Tensor(scaled_anchors_l).index_select(dim=1, index=torch.LongTensor([0])).type_as(x)
+        anchor_h = torch.Tensor(scaled_anchors_l).index_select(dim=1, index=torch.LongTensor([1])).type_as(y)
+        print("anchor_w",anchor_w)
+
+        # 给网格上的每一个点构造 这个点对应的 先验框的 在特征图上的w,h
+        # 针对13*13 的网格 的 先验框 w, h:
+        # ((3.625, 2.8125), (4.875, 6.1875), (11.65625, 10.1875))
+        # 13*13 = 169 个 (3.625,4.875,11.65625)
+        # 有 batch_size 个图 ，所以 最后是 batch_size * 169 个 网格点，每个点都有与之对应的先验框w,h
+        # 下面这段代码就是实现了以上的描述,构造了每一个网格点的w,h
+        anchor_w = anchor_w.repeat(bs, 1).repeat(1, 1, in_h * in_w).view(w.shape)
+        anchor_h = anchor_h.repeat(bs, 1).repeat(1, 1, in_h * in_w).view(h.shape)
+
 
 
     def calculate_iou(self, _box_a, _box_b):

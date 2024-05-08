@@ -85,7 +85,7 @@ class YoloNet(nn.Module):
         # 52, 52, 384 -> 52, 52, 75
         x52_branch_out = self.last_layer2(out52concat) # [52,52,75]
 
-        return x52_branch_out, x26_branch_out, x13_branch_out
+        return x13_branch_out, x26_branch_out, x52_branch_out
 
 
 if __name__ == "__main__":
