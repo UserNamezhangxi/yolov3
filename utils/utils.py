@@ -15,3 +15,7 @@ def get_anchors(anchors_path):
     anchors = [float(x) for x in anchors.split(',')]
     anchors = np.array(anchors).reshape(-1, 2)
     return anchors, len(anchors)
+
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']

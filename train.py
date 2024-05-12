@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 from torch import nn
@@ -18,11 +20,15 @@ pretrained = False  # 是否进行预训练
     2、关注冻结和解冻训练
 """
 
-
-
+train_sampler = None
+val_sampler = None
+shuffle = True
+batch_size = 16
+nw = 0
 
 # 检查是否有CUDA支持的GPU可用，如果有，则使用第一个GPU；否则，使用CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+local_rank = 0
 
 yolo_weight_pth = 'model/yolo_weights.pth'
 model = YoloNet(pretrained)
@@ -62,14 +68,6 @@ if yolo_weight_pth != '':
 
 train_dataset = YoloDataset("2007_train.txt", isTrain=True)
 test_dataset = YoloDataset("2007_test.txt", isTrain=False)
-
-
-
-train_sampler = None
-val_sampler = None
-shuffle = True
-batch_size = 4
-nw = 0
 
 
 # 构建dataloader
@@ -171,6 +169,7 @@ anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
 
 loss_history = None # LossHistory(log_dir, model, input_shape=input_shape)
 yolo_loss = YOLOLoss(anchors, classes_len, input_shape, device, anchors_mask)
+yolo_loss.to(device)
 eval_callback = None
 epoch_step = num_train // batch_size
 epoch_step_val = num_val // batch_size
@@ -178,12 +177,12 @@ epoch_step_val = num_val // batch_size
 # ------------------------------------------------------------------#
 #   save_period     多少个epoch保存一次权值
 # ------------------------------------------------------------------#
-save_period = 10
+save_period = 2
 
 # ------------------------------------------------------------------#
 #   save_dir        权值与日志文件保存的文件夹
 # ------------------------------------------------------------------#
-save_dir = 'logs'
+save_dir = './logs/'
 local_rank = 0
 
 Cuda = True
@@ -193,8 +192,14 @@ for epoch in range(Init_Epoch, UnFreeze_Epoch):
     set_optimizer_lr(optimizer, lr_scheduler_func, epoch)
 
     print("model is in ", next(model.parameters()).device)
-    fit_one_epoch(model, yolo_loss, loss_history, eval_callback, optimizer, epoch, epoch_step,
-                  epoch_step_val, data_loader, data_loader_val, UnFreeze_Epoch, Cuda, False, None, save_period, save_dir, device, local_rank)
+    fit_one_epoch(model, yolo_loss, loss_history, eval_callback,
+                  optimizer, epoch, epoch_step,
+                  epoch_step_val, data_loader, data_loader_val,
+                  UnFreeze_Epoch, Cuda, False,
+                  None, save_period, save_dir, device, local_rank)
+
+torch.save(model.state_dict(), os.path.join(save_dir, "last_epoch_weights.pth"))
+
 
 # if local_rank == 0:
 #     loss_history.writer.close()

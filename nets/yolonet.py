@@ -91,8 +91,9 @@ class YoloNet(nn.Module):
 if __name__ == "__main__":
     net = YoloNet()
     print("net", net)
+    print("model is in ", next(net.parameters()).device)
     inputs = torch.rand((1,3,416, 416))
-    x52_branch_out, x26_branch_out, x13_branch_out = net.forward(inputs)
+    x52_branch_out, x26_branch_out, x13_branch_out = net(inputs)
     print(x13_branch_out.shape)
     print(x26_branch_out.shape)
     print(x52_branch_out.shape)

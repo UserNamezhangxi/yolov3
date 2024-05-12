@@ -14,8 +14,8 @@ class YOLOLoss(nn.Module):
         self.device = device
         self.anchors_mask = anchors_mask
         self.ignore_threshold = 0.5
-        self.loss_fn = nn.BCELoss()
-        self.loss_fn.to(device)
+        # self.loss_fn = nn.BCELoss()
+        # self.loss_fn.to(device)
 
         self.box_ratio = 0.05
         self.obj_ratio = 5 * (input_shape[0] * input_shape[1]) / (416 ** 2)
