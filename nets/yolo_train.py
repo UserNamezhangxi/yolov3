@@ -39,8 +39,8 @@ class YOLOLoss(nn.Module):
         # 如果是26 * 26 的特征图的话，一个特征点就对应原来图上的16 个像素点
         # 如果是52 * 52 的特征图的话，一个特征点就对应原来图上的8 个像素点
         # stride_h = stride_w = 32, 16, 8
-        stride_h = self.input_shape[0]
-        stride_w = self.input_shape[1]
+        stride_h = self.input_shape[0] / in_h
+        stride_w = self.input_shape[1] / in_w
 
         # 此时获得的scaled——anchor 大小是相对于特征图的
         scaled_anchors = [(a_w / stride_w, a_h / stride_h) for a_w, a_h in self.anchors]
@@ -51,8 +51,7 @@ class YOLOLoss(nn.Module):
 
         # 将输入转为最终的输出shape
         # bs, 3*(5 + number_classes), 52 ,52  --->  bs , 3 , 13, 13 ,5+20
-        prediction = (input.view(bs, len(self.anchors_mask[l]), 5 + self.number_classes, in_h, in_w)
-                      .permute(0, 1, 3, 4, 2).contiguous())
+        prediction = input.view(bs, len(self.anchors_mask[l]), 5 + self.number_classes, in_h, in_w).permute(0, 1, 3, 4, 2).contiguous()
 
         # 先验框中心调整至参数
         x = torch.sigmoid(prediction[..., 0])  # 取最后一个维度的 第 0 轴的 数据
@@ -362,14 +361,18 @@ class YOLOLoss(nn.Module):
         return output
 
 
-def weight_init(net, init_gain=0.02):
+def weight_init(net, init_type='normal', init_gain = 0.02):
     def init_func(m):
-        if isinstance(m, nn.Conv2d):
-            torch.nn.init.normal_(m.weight.data, 0, init_gain)
-        elif isinstance(m, nn.BatchNorm2d):
-            torch.nn.init.normal_(m.weight.data, 1.0, std=init_gain)
+        classname = m.__class__.__name__
+        if hasattr(m, 'weight') and classname.find('Conv') != -1:
+            if init_type == 'normal':
+                torch.nn.init.normal_(m.weight.data, 0.0, init_gain)
+            else:
+                raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+        elif classname.find('BatchNorm2d') != -1:
+            torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
             torch.nn.init.constant_(m.bias.data, 0.0)
-
+    print('initialize network with %s type' % init_type)
     net.apply(init_func)
 
 
@@ -412,3 +415,5 @@ def set_optimizer_lr(optimizer, lr_scheduler_func, epoch):
     lr = lr_scheduler_func(epoch)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+
+    print("epoch {} , set_optimizer_lr {} ".format(epoch, lr))

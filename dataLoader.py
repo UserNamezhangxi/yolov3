@@ -3,18 +3,7 @@ from torch.utils.data.dataset import Dataset
 from PIL import Image
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
-
-def preprocess_input(img):
-    img = img / 255.0
-    return img
-
-def cvtColor(image):
-    if len(np.shape(image)) == 3 and np.shape(image)[2] == 3:
-        return image
-    else:
-        image = image.convert('RGB')
-        return image
-
+from utils.utils import cvtColor, preprocess_input
 
 class YoloDataset(Dataset):
     def __init__(self, train_path, isTrain):
@@ -31,6 +20,15 @@ class YoloDataset(Dataset):
     def __getitem__(self, index):
         img, boxes = self.get_item_data(index)
         image = np.transpose(preprocess_input(np.array(img, dtype=np.float32)), (2, 0, 1))
+        boxes = np.array(boxes, dtype=np.float32)
+
+        if len(boxes) != 0:
+            boxes[:, [0, 2]] = boxes[:, [0, 2]] / self.input_shape[1]
+            boxes[:, [1, 3]] = boxes[:, [1, 3]] / self.input_shape[0]
+
+            boxes[:, 2:4] = boxes[:, 2:4] - boxes[:, 0:2]
+            boxes[:, 0:2] = boxes[:, 0:2] + boxes[:, 2:4] / 2
+
         return image, boxes
 
     def get_item_data(self, index):
@@ -62,8 +60,14 @@ class YoloDataset(Dataset):
         # 图形归一化
         # image_data = image_data / 255.0
         # bndbox 归一化
-        box[:, [0, 2]] = box[:, [0, 2]] / nw
-        box[:, [1, 3]] = box[:, [1, 3]] / nh
+        box[:, [0, 2]] = box[:, [0, 2]] * nw/iw
+        box[:, [1, 3]] = box[:, [1, 3]] * nh/ih
+        box[:, 0:2][box[:, 0:2] < 0] = 0
+        box[:, 2][box[:, 2] > w] = w
+        box[:, 3][box[:, 3] > h] = h
+        box_w = box[:, 2] - box[:, 0]
+        box_h = box[:, 3] - box[:, 1]
+        box = box[np.logical_and(box_w > 1, box_h > 1)]  # discard invalid box
         # print("缩放后的box={}{},{}{}".format(box[0,0], box[0,1],box[0,2], box[0,3]))
 
         # x_min = box[0,0] * nw / scale

@@ -4,8 +4,12 @@ import torch
 from tqdm import tqdm
 from utils.utils import get_lr
 
-def fit_one_epoch(model, yolo_loss, loss_history, eval_callback, optimizer, epoch, epoch_step,
-                  epoch_step_val, data_loader, data_loader_val, Epoch, cuda, fp16, scaler, save_period, save_dir, device, local_rank=0):
+
+
+def fit_one_epoch(model, yolo_loss, loss_history, eval_callback,
+                  optimizer, epoch, epoch_step,
+                  epoch_step_val, data_loader, data_loader_val,
+                  Epoch, save_period, save_dir, device, writer, local_rank=0):
     loss = 0
     val_loss = 0
 
@@ -62,6 +66,9 @@ def fit_one_epoch(model, yolo_loss, loss_history, eval_callback, optimizer, epoc
             pbar.set_postfix(**{'loss': loss / (iteration + 1), 'lr': get_lr(optimizer)})
             pbar.update(1)
 
+    writer.add_scalar("train_loss", loss, epoch)
+
+
     # 一个batch 数据走完前向传播和反向传播更新了权重，然后对验证集进行验证
     if local_rank == 0:
         pbar.close()
@@ -72,6 +79,7 @@ def fit_one_epoch(model, yolo_loss, loss_history, eval_callback, optimizer, epoc
     model.eval()
 
     for iteration, batch in enumerate(data_loader_val):
+        print("val iteration", iteration)
         if iteration >= epoch_step_val:
             # print("测试集的迭代次数大于设定的测试集步长！")
             break
@@ -107,6 +115,8 @@ def fit_one_epoch(model, yolo_loss, loss_history, eval_callback, optimizer, epoc
         if local_rank == 0:
             pbar.set_postfix(**{'val_loss': val_loss / (iteration + 1)})
             pbar.update(1)
+
+    writer.add_scalar("test_loss", val_loss, epoch)
 
     if local_rank == 0:
         pbar.close()

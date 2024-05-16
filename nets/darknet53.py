@@ -96,10 +96,5 @@ def darknet53():
     return model
 
 if __name__ == "__main__":
-    # model = BasicBlock(32, 64)
-    # inputs = torch.randn(*(1, 32, 128, 128))  # nchw
-    # print(model)
-    # out = model.forward(inputs)
-    # print(out.shape)
     model = darknet53()
     print(model)

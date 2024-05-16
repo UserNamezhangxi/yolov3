@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
-import torch.backends.cudnn as cudnn
+from torch.utils.tensorboard import SummaryWriter
 
 from dataLoader import YoloDataset, yolo_dataset_collate
 from nets.yolo_train import weight_init, set_optimizer_lr, get_lr_scheduler, YOLOLoss
@@ -13,6 +13,12 @@ from nets.yolonet import YoloNet
 from utils.utils import get_classes, get_anchors
 from utils.utils_fit import fit_one_epoch
 
+# ----------------------------------------------------------------------------------------------------------------------------#
+#   pretrained      是否使用主干网络的预训练权重，此处使用的是主干的权重，因此是在模型构建的时候进行加载的。
+#                   如果设置了model_path，则主干的权值无需加载，pretrained的值无意义。
+#                   如果不设置model_path，pretrained = True，此时仅加载主干开始训练。
+#                   如果不设置model_path，pretrained = False，Freeze_Train = Fasle，此时从0开始训练，且没有冻结主干的过程。
+# ----------------------------------------------------------------------------------------------------------------------------#
 pretrained = False  # 是否进行预训练
 
 """
@@ -31,7 +37,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 local_rank = 0
 
 yolo_weight_pth = 'model/yolo_weights.pth'
-model = YoloNet(pretrained)
+model = YoloNet(pretrained=pretrained)
 model.to(device)
 
 if not pretrained:
@@ -103,27 +109,80 @@ Freeze_batch_size = 16
 #                           Adam可以使用相对较小的UnFreeze_Epoch
 #   Unfreeze_batch_size     模型在解冻后的batch_size
 # ------------------------------------------------------------------#
-UnFreeze_Epoch = 300
+UnFreeze_Epoch = 100
 Unfreeze_batch_size = 8
 
 
 optimizer_type = 'adam'
-Init_lr = 1e-2
+Init_lr = 1e-3 if optimizer_type == 'adam' else 1e-2
 Min_lr = Init_lr * 0.01
-nbs = 64
 momentum = 0.937
-weight_decay = 5e-4
-
+weight_decay = 0 if optimizer_type == 'adam' else 5e-4
 
 input_shape = [416, 416]
-anchors = torch.asarray([[10.,  13.], [16.,  30.], [33.,  23.], [30.,  61.], [62.,  45.], [59., 119.], [116.,  90.], [156., 198.], [373., 326.]])
+
+# ---------------------------#
+#   读取数据集对应的txt
+# ---------------------------#
+with open("2007_train.txt") as f:
+    train_lines = f.readlines()
+with open("2007_test.txt") as f:
+    val_lines = f.readlines()
+num_train = len(train_lines)
+num_val = len(val_lines)
+
+classes, classes_len = get_classes('dataset/voc_classes.txt')
+anchors, anchors_len = get_anchors('dataset/yolo_anchors.txt')
+anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
 
 
+loss_history = None # LossHistory(log_dir, model, input_shape=input_shape)
+yolo_loss = YOLOLoss(anchors, classes_len, input_shape, device, anchors_mask)
+yolo_loss.to(device)
+eval_callback = None
+
+# ------------------------------------------------------------------#
+#   save_period     多少个epoch保存一次权值
+# ------------------------------------------------------------------#
+save_period = 5
+
+# ------------------------------------------------------------------#
+#   save_dir        权值与日志文件保存的文件夹
+# ------------------------------------------------------------------#
+save_dir = './logs/'
+local_rank = 0
+
+# ------------------------------------------------------------------#
+#   Freeze_Train    是否进行冻结训练
+#                   默认先冻结主干训练后解冻训练。
+# ------------------------------------------------------------------#
+Freeze_Train = True
+
+UnFreeze_flag = False
+
+#------------------------------------#
+#   冻结一定部分训练
+#------------------------------------#
+if Freeze_Train:
+    for param in model.backbone.parameters():
+        param.requires_grad = False
+
+
+#-------------------------------------------------------------------#
+#   设置batch_size
+#   如果不冻结训练的话，直接设置batch_size为Unfreeze_batch_size
+#-------------------------------------------------------------------#
+batch_size = Freeze_batch_size if Freeze_Train else Unfreeze_batch_size
+
+
+#-------------------------------------------------------------------#
+#   判断当前batch_size，自适应调整学习率
+#-------------------------------------------------------------------#
+nbs = 64
 lr_limit_max = 1e-3 if optimizer_type == 'adam' else 5e-2
 lr_limit_min = 3e-4 if optimizer_type == 'adam' else 5e-4
 Init_lr_fit = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
 Min_lr_fit = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
-
 
 
 #---------------------------------------#
@@ -148,56 +207,52 @@ lr_decay_type = "cos"
 #   获得学习率下降的公式
 lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, UnFreeze_Epoch)
 
-# model_train = torch.nn.DataParallel(model)
-# cudnn.benchmark = True
-# model_train = model_train.cuda()
-
-# ---------------------------#
-#   读取数据集对应的txt
-# ---------------------------#
-with open("2007_train.txt") as f:
-    train_lines = f.readlines()
-with open("2007_test.txt") as f:
-    val_lines = f.readlines()
-num_train = len(train_lines)
-num_val = len(val_lines)
-
-classes, classes_len = get_classes('dataset/voc_classes.txt')
-anchors, anchors_len = get_anchors('dataset/yolo_anchors.txt')
-anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
-
-
-loss_history = None # LossHistory(log_dir, model, input_shape=input_shape)
-yolo_loss = YOLOLoss(anchors, classes_len, input_shape, device, anchors_mask)
-yolo_loss.to(device)
-eval_callback = None
+#---------------------------------------#
+#   判断每一个epoch的长度
+#---------------------------------------#
 epoch_step = num_train // batch_size
 epoch_step_val = num_val // batch_size
 
-# ------------------------------------------------------------------#
-#   save_period     多少个epoch保存一次权值
-# ------------------------------------------------------------------#
-save_period = 2
-
-# ------------------------------------------------------------------#
-#   save_dir        权值与日志文件保存的文件夹
-# ------------------------------------------------------------------#
-save_dir = './logs/'
-local_rank = 0
-
-Cuda = True
+# 添加tensorboard
+writer = SummaryWriter(log_dir='./tensorboard_logs')
 
 # 开始模型训练
 for epoch in range(Init_Epoch, UnFreeze_Epoch):
+
+    # 如果模型有冻结学习部分，则解冻，并设置新的解冻后的参数
+    if epoch > Freeze_Epoch and not UnFreeze_flag and Freeze_Train:
+        batch_size = Unfreeze_batch_size
+
+        # -------------------------------------------------------------------#
+        #   判断当前batch_size，自适应调整学习率
+        # -------------------------------------------------------------------#
+        nbs = 64
+        lr_limit_max = 1e-3 if optimizer_type == 'adam' else 5e-2
+        lr_limit_min = 3e-4 if optimizer_type == 'adam' else 5e-4
+        Init_lr_fit = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
+        Min_lr_fit = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
+
+        # ---------------------------------------#
+        #   获得学习率下降的公式
+        # ---------------------------------------#
+        lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, UnFreeze_Epoch)
+
+        # 主干特征网络也参与训练
+        for param in model.backbone.parameters():
+            param.requires_grad = True
+
+        epoch_step = num_train // batch_size
+        epoch_step_val = num_val // batch_size
+
+        UnFreeze_flag = True
+
     set_optimizer_lr(optimizer, lr_scheduler_func, epoch)
 
     print("model is in ", next(model.parameters()).device)
     fit_one_epoch(model, yolo_loss, loss_history, eval_callback,
                   optimizer, epoch, epoch_step,
                   epoch_step_val, data_loader, data_loader_val,
-                  UnFreeze_Epoch, Cuda, False,
-                  None, save_period, save_dir, device, local_rank)
-
+                  UnFreeze_Epoch, save_period, save_dir, device, writer, local_rank)
 torch.save(model.state_dict(), os.path.join(save_dir, "last_epoch_weights.pth"))
 
 
