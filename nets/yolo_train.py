@@ -9,8 +9,9 @@ class YOLOLoss(nn.Module):
     def __init__(self, anchors, number_classes, input_shape, device, anchors_mask=[[6, 7, 8], [3, 4, 5], [0, 1, 2]]):
         super(YOLOLoss, self).__init__()
         self.anchors = anchors
-        self.input_shape = input_shape
         self.number_classes = number_classes
+        self.bbox_attrs = 5 + number_classes
+        self.input_shape = input_shape
         self.device = device
         self.anchors_mask = anchors_mask
         self.ignore_threshold = 0.5
@@ -51,7 +52,7 @@ class YOLOLoss(nn.Module):
 
         # 将输入转为最终的输出shape
         # bs, 3*(5 + number_classes), 52 ,52  --->  bs , 3 , 13, 13 ,5+20
-        prediction = input.view(bs, len(self.anchors_mask[l]), 5 + self.number_classes, in_h, in_w).permute(0, 1, 3, 4, 2).contiguous()
+        prediction = input.view(bs, len(self.anchors_mask[l]), self.bbox_attrs, in_h, in_w).permute(0, 1, 3, 4, 2).contiguous()
 
         # 先验框中心调整至参数
         x = torch.sigmoid(prediction[..., 0])  # 取最后一个维度的 第 0 轴的 数据
@@ -60,7 +61,7 @@ class YOLOLoss(nn.Module):
         # 先验框的宽高调整参数
         h = prediction[..., 2]  # 取最后一个维度的 第 2 轴的 数据
         w = prediction[..., 3]  # 取最后一个维度的 第 3 轴的 数据
-        conf = prediction[..., 4]  # 取最后一个维度的 第 4 轴的 数据 置信度
+        conf = torch.sigmoid(prediction[..., 4])  # 取最后一个维度的 第 4 轴的 数据 置信度
 
         # 获取分类结果的置信度
         pred_cls = torch.sigmoid(prediction[..., 5:])
@@ -118,7 +119,7 @@ class YOLOLoss(nn.Module):
         box_loss_scale = torch.zeros(bs, len(self.anchors_mask[l]), in_h, in_w, requires_grad=False)
 
         # batch_size, 3, 13, 13, 5 + num_classes
-        y_true = torch.zeros(bs, len(self.anchors_mask[l]), in_h, in_w, 5 + self.number_classes, requires_grad=False)
+        y_true = torch.zeros(bs, len(self.anchors_mask[l]), in_h, in_w, self.bbox_attrs, requires_grad=False)
 
         for b in range(bs):
             if len(targets[b]) == 0:  # 没有真实框，忽略
@@ -127,8 +128,8 @@ class YOLOLoss(nn.Module):
             batch_target = torch.zeros_like(targets[b])
 
             # 将 tensor target * 输入特征图的高宽，获得真实框在特征图上的中心点坐标值和宽高值
-            batch_target[:, [0, 2]] = targets[b][:, [0, 2]] * in_h
-            batch_target[:, [1, 3]] = targets[b][:, [1, 3]] * in_w
+            batch_target[:, [0, 2]] = targets[b][:, [0, 2]] * in_w
+            batch_target[:, [1, 3]] = targets[b][:, [1, 3]] * in_h
             batch_target[:, 4] = targets[b][:, 4]
             batch_target = batch_target.cpu()
 
@@ -139,8 +140,7 @@ class YOLOLoss(nn.Module):
             gt_box = torch.FloatTensor(torch.cat((torch.zeros((batch_target.size(0), 2)), batch_target[:, 2:4]), dim=1))
 
             # 将中心点固定在0,0 组成 （0，0，高，宽）样子的坐标
-            anchor_boxes = torch.cat((torch.zeros(len(scaled_anchors), 2), torch.FloatTensor(scaled_anchors)), dim=1)
-
+            anchor_boxes = torch.FloatTensor(torch.cat((torch.zeros((len(scaled_anchors), 2)), torch.FloatTensor(scaled_anchors)),  dim=1))
             # 这样以来就能固定中心点，计算真实框 和 每一个anchors 的 iou 从而得到当前真实框是属于哪一个类型的anchors,比如大目标的框、中等目标的框、小目标的框
             # 这里就是在计算 当前真实框是属于哪个目标范围框框内的的最大的iou
             # 比如图片内那只狗，它计算出来可能就用最大的竖向的框去框它，
@@ -162,24 +162,26 @@ class YOLOLoss(nn.Module):
                 # 取出真实框的种类
                 c = batch_target[t, 4].long()
 
-                noobj_mask[b, k, i, j] = 0
+                noobj_mask[b, k, j, i] = 0
 
                 # ----------------------------------------#
                 #   tx、ty代表中心调整参数的真实值
                 # ----------------------------------------#
-                y_true[b, k, i, j, 0] = batch_target[t, 0]
-                y_true[b, k, i, j, 1] = batch_target[t, 1]
-                y_true[b, k, i, j, 2] = batch_target[t, 2]
-                y_true[b, k, i, j, 3] = batch_target[t, 3]
-                y_true[b, k, i, j, 4] = 1
-                y_true[b, k, i, j, c + 5] = 1
+                y_true[b, k, j, i, 0] = batch_target[t, 0]
+                y_true[b, k, j, i, 1] = batch_target[t, 1]
+                y_true[b, k, j, i, 2] = batch_target[t, 2]
+                y_true[b, k, j, i, 3] = batch_target[t, 3]
+                y_true[b, k, j, i, 4] = 1
+                y_true[b, k, j, i, c + 5] = 1
 
                 # ----------------------------------------#
                 #  TODO 这里是什么含义呢
                 #   用于获得xywh的比例
-                #   大目标loss权重小，小目标loss权重大
+                #   大目标loss权重小，小目标loss权重大     这里 用目标值的 w,h 相互× ，然后再除去 这个网络的网格宽高，就得到一个当前网格宽高相对于特征层分辨率（13*13 ，26*26 ，52 *52）的比值，
+                #   又因为 大目标选择的是 13* 13 的 小目标选择是 52*52 的，所以这样算下来会得到一个目标相对于当前层的宽高 的比值，所以大目标的比值大， 小目标的比值小， 用 1 - 这个值就得到
+                #   小目标的损失大，大目标的损失小
                 # ----------------------------------------#
-                box_loss_scale[b, k, i, j] = batch_target[t, 2] * batch_target[t, 3] / in_w / in_h
+                box_loss_scale[b, k, j, i] = batch_target[t, 2] * batch_target[t, 3] / in_w / in_h
         return y_true, noobj_mask, box_loss_scale
 
     def get_ignore(self, l, x, y, h, w, targets, scaled_anchors, in_h, in_w, noobj_mask):
@@ -201,12 +203,12 @@ class YOLOLoss(nn.Module):
                   .t()
                   .repeat(int(bs * len(self.anchors_mask[l])), 1, 1)
                   .view(y.shape)
-                  .type_as(y))
+                  .type_as(x))
 
         # 生成对应层l 的 先验框的宽高
         scaled_anchors_l = np.array(scaled_anchors)[self.anchors_mask[l]]
         anchor_w = torch.Tensor(scaled_anchors_l).index_select(dim=1, index=torch.LongTensor([0])).type_as(x)
-        anchor_h = torch.Tensor(scaled_anchors_l).index_select(dim=1, index=torch.LongTensor([1])).type_as(y)
+        anchor_h = torch.Tensor(scaled_anchors_l).index_select(dim=1, index=torch.LongTensor([1])).type_as(x)
         # print("anchor_w", anchor_w)
 
         # 给网格上的每一个点构造 这个点对应的 先验框的 在特征图上的w,h
@@ -361,12 +363,18 @@ class YOLOLoss(nn.Module):
         return output
 
 
-def weight_init(net, init_type='normal', init_gain = 0.02):
+def weights_init(net, init_type='normal', init_gain = 0.02):
     def init_func(m):
         classname = m.__class__.__name__
         if hasattr(m, 'weight') and classname.find('Conv') != -1:
             if init_type == 'normal':
                 torch.nn.init.normal_(m.weight.data, 0.0, init_gain)
+            elif init_type == 'xavier':
+                torch.nn.init.xavier_normal_(m.weight.data, gain=init_gain)
+            elif init_type == 'kaiming':
+                torch.nn.init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+            elif init_type == 'orthogonal':
+                torch.nn.init.orthogonal_(m.weight.data, gain=init_gain)
             else:
                 raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
         elif classname.find('BatchNorm2d') != -1:

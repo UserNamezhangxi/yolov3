@@ -57,6 +57,7 @@ class DarkNet(nn.Module):
 
         self.layers_out_filters = [64, 128, 256, 512, 1024]
 
+        # 进行权值初始化
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels

@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from dataLoader import YoloDataset, yolo_dataset_collate
-from nets.yolo_train import weight_init, set_optimizer_lr, get_lr_scheduler, YOLOLoss
+from nets.yolo_train import weights_init, set_optimizer_lr, get_lr_scheduler, YOLOLoss
 from nets.yolonet import YoloNet
 from utils.utils import get_classes, get_anchors
 from utils.utils_fit import fit_one_epoch
@@ -37,12 +37,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 local_rank = 0
 
 yolo_weight_pth = 'model/yolo_weights.pth'
-model = YoloNet(pretrained=pretrained)
+classes, classes_len = get_classes('dataset/voc_classes.txt')
+anchors, anchors_len = get_anchors('dataset/yolo_anchors.txt')
+anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
+
+model = YoloNet(anchors_mask, classes_len, pretrained=pretrained)
 model.to(device)
 
 if not pretrained:
     # 加载yolo的预训练模型参数
-    weight_init(model)
+    weights_init(model)
 
 # ------------------------------------------------------#
 #   根据预训练权重的Key和模型的Key进行加载
@@ -131,9 +135,7 @@ with open("2007_test.txt") as f:
 num_train = len(train_lines)
 num_val = len(val_lines)
 
-classes, classes_len = get_classes('dataset/voc_classes.txt')
-anchors, anchors_len = get_anchors('dataset/yolo_anchors.txt')
-anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
+
 
 
 loss_history = None # LossHistory(log_dir, model, input_shape=input_shape)

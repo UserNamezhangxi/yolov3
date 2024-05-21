@@ -27,7 +27,7 @@ def make_last_layer(in_filters, filters_list, out_filter):
 
 
 class YoloNet(nn.Module):
-    def __init__(self, pretrained=False):
+    def __init__(self, anchors_mask, num_classes, pretrained=False):
         super(YoloNet, self).__init__()
         # ========================#
         # 生成darknet53 主干网络
@@ -47,21 +47,21 @@ class YoloNet(nn.Module):
         # 输出通道75 = 3*(5+20) = 3*((4+1) + 20分类(对于V0C2007数据集))
 
         # 将输出13,13,75
-        self.last_layer0 = make_last_layer(1024, [512, 1024], 75)  # VOC数据集20 分类
+        self.last_layer0 = make_last_layer(1024, [512, 1024], len(anchors_mask[0]) * (num_classes + 5))  # VOC数据集20 分类
 
         # 输出13,13,512
         self.last_layer1_conv = conv2d(512, 256, 1)
         # 输出 26,26,256
         self.last_layer1_upsample = nn.Upsample(scale_factor=2, mode='nearest')
         # 输出 26,26,75
-        self.last_layer1 = make_last_layer(512 + 256, [256, 512], 75) # VOC数据集20 分类
+        self.last_layer1 = make_last_layer(512 + 256, [256, 512], len(anchors_mask[1]) * (num_classes + 5)) # VOC数据集20 分类
 
         # 输出26,26,256
         self.last_layer2_conv = conv2d(256, 128, 1)
         # 输出52,52,128
         self.last_layer2_upsample = nn.Upsample(scale_factor=2, mode='nearest')
         # 输出52,52,75
-        self.last_layer2 = make_last_layer(256 + 128, [128, 256], 75) # VOC数据集20 分类
+        self.last_layer2 = make_last_layer(256 + 128, [128, 256], len(anchors_mask[2]) * (num_classes + 5)) # VOC数据集20 分类
 
     def forward(self, x):
         x52, x26, x13 = self.backbone(x)
@@ -89,7 +89,7 @@ class YoloNet(nn.Module):
 
 
 if __name__ == "__main__":
-    net = YoloNet()
+    net = YoloNet([[6, 7, 8], [3, 4, 5], [0, 1, 2]], 20)
     print("net", net)
     print("model is in ", next(net.parameters()).device)
     inputs = torch.rand((1,3,416, 416))

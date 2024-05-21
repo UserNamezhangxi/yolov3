@@ -23,7 +23,7 @@ class Yolo(object):
         #   验证集损失较低不代表mAP较高，仅代表该权值在验证集上泛化性能较好。
         #   如果出现shape不匹配，同时要注意训练时的model_path和classes_path参数的修改
         # --------------------------------------------------------------------------#
-        "model_path": 'model/ep050-loss0.252-val_loss0.664.pth',
+        "model_path": 'model/last_epoch_weights.pth',
         "classes_path": 'dataset/voc_classes.txt',
         # ---------------------------------------------------------------------#
         #   anchors_path代表先验框对应的txt文件，一般不修改。
@@ -38,7 +38,7 @@ class Yolo(object):
         # ---------------------------------------------------------------------#
         #   只有得分大于置信度的预测框会被保留下来
         # ---------------------------------------------------------------------#
-        "confidence": 0.4,
+        "confidence": 0.5,
         # ---------------------------------------------------------------------#
         #   非极大抑制所用到的nms_iou大小
         # ---------------------------------------------------------------------#
@@ -77,7 +77,7 @@ class Yolo(object):
 
 
     def generate(self):
-        self.net = YoloNet()
+        self.net = YoloNet(self.anchors_mask, self.num_classes)
         print(self.net)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.net.load_state_dict(torch.load(self.model_path, map_location=self.device))
