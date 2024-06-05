@@ -2,7 +2,7 @@
 
 ### 数据集读取
 本次使用VOC2007数据集，20分类
-![img](./img_data/1.jpg)
+![img](img_data/1.jpg)
 
 其中的內容如下
 ```xml
@@ -89,8 +89,8 @@
 ```
 主要涉及到对 `name` 和 `bndbox` 的读取 代表物体类别和物体的坐标框
 对之应的图片信息
-![img](./img_data/2.jpg)
-![img](./img_data/3.jpg)
+![img](img_data/2.jpg)
+![img](img_data/3.jpg)
 
 另外 `imageSets` 中存在 `/Main/train.txt` 和 `Main/test.txt` 里面分别是索引训练和验证的图片集合，通过读取这里的每一行文件名，对应到`Annotation` 文件夹中的xml文件，对其进行解析，分别写入 `2007_train.txt`和 `2007_test.txt` 文件中，方便后期 dataset 的读取
 
@@ -150,7 +150,7 @@ if __name__ == "__main__":
 ```
 
 最终数据提取完后如下：
-![img](./img_data/4.jpg)
+![img](img_data/4.jpg)
 
 这样，就可以进行数据集的加载了
 首先明确几个点
@@ -161,7 +161,7 @@ img`(3,416,416)`  ,    target`(n,5)` 这里的n代表有几个目标，5对应(x
 如果batch_size = 16
 就有一个list 包括16个 ``(img (3,416,416)  target(n,5))`
 最终一个batch就会返回这样的数据
-![img](./img_data/5.jpg)
+![img](img_data/5.jpg)
 图5
 
 
@@ -262,7 +262,7 @@ def yolo_dataset_collate(batch):
 最终送给网络的数据是 （batch_size,3,416,416）(batch_size,n,5)
 
 ### 主干特征提取网络
-![img](./img_data/net.jpg)
+![img](img_data/net.jpg)
 主干特征提取使用的是作者的draknet53网络，对输入进行 Cov2D、BatchNormal、LeakRelu激活
 之后进行残差快的堆叠如图
 Yolo Head对三个有效特征层（分别是52*52*256、26*26*512、13*13*1024）进行FPN构建
@@ -477,7 +477,7 @@ class YoloNet(nn.Module):
 
 那我们也得对目标进行同样的 输出编码，和预测数据对应即可.
 例如
-![img](./img_data/loss.jpg)
+![img](img_data/loss.jpg)
 将一张图片进行全卷积然后输出5\*2\*2 的结构
 与之对应的标签数据也转换成为5\*2\*2 的结构
 这样将 预测 和 标签送入loss 函数进行loss 求解即可。
@@ -486,7 +486,7 @@ class YoloNet(nn.Module):
 是
 （batch_size,13,13,5,20）  这里 13 \* 13 是网络对于大目标的预测Yolo layer , 5 是 (x,y,w,h,conf) ,20 是 20 个分类，预测结果的类别个数
 那么网络预测一个batch中数据是这样子的
-![img](./img_data/shape1313.png)
+![img](img_data/shape1313.png)
 
 那么也需要将对应的标签结果转换成这样，与预测结果进行loss 比对即可。
 
@@ -935,7 +935,7 @@ loss的计算论文中是分别进行计算
 但是有一个更好的计算iou损失的方法，就的**GIou**。比 正常计算1、2 回归损失更靠谱，本代码中采用的是GIou计算回归损失
 
 计算 iou 13*13 的三种锚框
-![img](./img_data/10.png)
+![img](img_data/10.png)
 使用蓝色的真实框和每一个网格的左上角的点的3种比例的 锚框 进行交并比计算，能够算出来最接近的蓝色框的iou,那么就把这网格点标记为存在目标，将真实框的目标参数 设置给这个锚框，那么 y_true 就构造完成了，对应的 noobj_mask 表示 这个网格中心点是否存在目标，有目标标记为0，无目标默认为1。这个就是get_target 所完成的任务
 
 get_ignore 是网络的预测值进行解码，将每一个预测的网格点 填充解码后的预测的数据，通过`torch.cat([pre_box_x, pre_box_y, pre_box_w, pre_box_h], -1)`构造成为和（x,y,w,h）结构的数据与真实框计算iou，取出每个先验框对应真实框的最大重合度iou ，最终就是 3\*13\*13 shape的 anchor_iou_max, 最终计算的是 13*13 的网格上每一个网格点和 真实框的 iou 值  shape（3,13,13）
@@ -974,7 +974,8 @@ _ _ _
         net.apply(init_func)
     ```
 分别对 weight 参数初始化、BatchNorm2d 参数进行初始化
--	1.2	加载已经训练好的模型参数（迁移学习）
+
+-   1.2	加载已经训练好的模型参数（迁移学习）
     ```python
     # ------------------------------------------------------#
     #   保存当前模型的权重
@@ -1007,65 +1008,67 @@ _ _ _
         # 从而将预训练的权重应用到当前模型中
         model_dict.update(temp_dict)
         model.load_state_dict(model_dict)
-   ```
-这样子模型就具备了特征提取的特性，方便后期进行图像的分类和 锚框参数的回归
+    ```
+    这样子模型就具备了特征提取的特性，方便后期进行图像的分类和 锚框参数的回归
 
 2、动态调整学习率
+_ _ _
 参考：[https://blog.csdn.net/m0_51579041/article/details/137998084](https://blog.csdn.net/m0_51579041/article/details/137998084)
-```python
-# ------------------------------#
-#   学习率调整策略：预热+余弦退火
-# ------------------------------#
-def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=0.05, warmup_lr_ratio=0.1,
-                     no_aug_iter_ratio=0.05, step_num=10):
-    def yolox_warm_cos_lr(lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter, iters):
-        # 前3轮进行warmup预测
-        if iters <= warmup_total_iters:
-            lr = (lr - warmup_lr_start) * pow(iters / float(warmup_total_iters), 2) + warmup_lr_start
-        # 训练收官阶段，模型参数需要稳定，所以最后的15轮以最小的学习率进行训练
-        elif iters >= total_iters - no_aug_iter:
-            lr = min_lr
-
-        # ------------------------------#
-        # 中间轮数使用cos余弦退火策略
-        # cos余弦退火：cos(当前训练轮数/总训练轮数)
-        # ------------------------------#
+    
+    ```python
+    # ------------------------------#
+    #   学习率调整策略：预热+余弦退火
+    # ------------------------------#
+    def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=0.05, warmup_lr_ratio=0.1,
+                         no_aug_iter_ratio=0.05, step_num=10):
+        def yolox_warm_cos_lr(lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter, iters):
+            # 前3轮进行warmup预测
+            if iters <= warmup_total_iters:
+                lr = (lr - warmup_lr_start) * pow(iters / float(warmup_total_iters), 2) + warmup_lr_start
+            # 训练收官阶段，模型参数需要稳定，所以最后的15轮以最小的学习率进行训练
+            elif iters >= total_iters - no_aug_iter:
+                lr = min_lr
+    
+            # ------------------------------#
+            # 中间轮数使用cos余弦退火策略
+            # cos余弦退火：cos(当前训练轮数/总训练轮数)
+            # ------------------------------#
+            else:
+                lr = min_lr + 0.5 * (lr - min_lr) * (
+                        1.0 + math.cos(
+                    math.pi * (iters - warmup_total_iters) / (total_iters - warmup_total_iters - no_aug_iter))
+                )
+            return lr
+    
+        def step_lr(lr, decay_rate, step_size, iters):
+            if step_size < 1:
+                raise ValueError("step_size must above 1.")
+            n = iters // step_size
+            out_lr = lr * decay_rate ** n
+            return out_lr
+    
+        if lr_decay_type == "cos":
+            # ------------------------------#
+            #   预热轮数不超过3轮  1~3
+            # ------------------------------#
+            warmup_total_iters = min(max(warmup_iters_ratio * total_iters, 1), 3)
+            warmup_lr_start = max(warmup_lr_ratio * lr, 1e-6)
+    
+            # ------------------------------#
+            #   最小学习率轮数不少于15轮
+            # ------------------------------#
+            no_aug_iter = min(max(no_aug_iter_ratio * total_iters, 1), 15)
+            func = partial(yolox_warm_cos_lr, lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter)
         else:
-            lr = min_lr + 0.5 * (lr - min_lr) * (
-                    1.0 + math.cos(
-                math.pi * (iters - warmup_total_iters) / (total_iters - warmup_total_iters - no_aug_iter))
-            )
-        return lr
-
-    def step_lr(lr, decay_rate, step_size, iters):
-        if step_size < 1:
-            raise ValueError("step_size must above 1.")
-        n = iters // step_size
-        out_lr = lr * decay_rate ** n
-        return out_lr
-
-    if lr_decay_type == "cos":
-        # ------------------------------#
-        #   预热轮数不超过3轮  1~3
-        # ------------------------------#
-        warmup_total_iters = min(max(warmup_iters_ratio * total_iters, 1), 3)
-        warmup_lr_start = max(warmup_lr_ratio * lr, 1e-6)
-
-        # ------------------------------#
-        #   最小学习率轮数不少于15轮
-        # ------------------------------#
-        no_aug_iter = min(max(no_aug_iter_ratio * total_iters, 1), 15)
-        func = partial(yolox_warm_cos_lr, lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter)
-    else:
-        decay_rate = (min_lr / lr) ** (1 / (step_num - 1))
-        step_size = total_iters / step_num
-        func = partial(step_lr, lr, decay_rate, step_size)
-
-    return func
-
-```
+            decay_rate = (min_lr / lr) ** (1 / (step_num - 1))
+            step_size = total_iters / step_num
+            func = partial(step_lr, lr, decay_rate, step_size)
+    
+        return func
+    ```
 
 3、Adam、SGD 优化器
+_ _ _
 ```python
 #---------------------------------------#
 #   根据optimizer_type选择优化器
