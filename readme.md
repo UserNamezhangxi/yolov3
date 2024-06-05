@@ -1015,57 +1015,57 @@ _ _ _
 _ _ _
 参考：[https://blog.csdn.net/m0_51579041/article/details/137998084](https://blog.csdn.net/m0_51579041/article/details/137998084)
     
-    ```python
-    # ------------------------------#
-    #   学习率调整策略：预热+余弦退火
-    # ------------------------------#
-    def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=0.05, warmup_lr_ratio=0.1,
-                         no_aug_iter_ratio=0.05, step_num=10):
-        def yolox_warm_cos_lr(lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter, iters):
-            # 前3轮进行warmup预测
-            if iters <= warmup_total_iters:
-                lr = (lr - warmup_lr_start) * pow(iters / float(warmup_total_iters), 2) + warmup_lr_start
-            # 训练收官阶段，模型参数需要稳定，所以最后的15轮以最小的学习率进行训练
-            elif iters >= total_iters - no_aug_iter:
-                lr = min_lr
-    
-            # ------------------------------#
-            # 中间轮数使用cos余弦退火策略
-            # cos余弦退火：cos(当前训练轮数/总训练轮数)
-            # ------------------------------#
-            else:
-                lr = min_lr + 0.5 * (lr - min_lr) * (
-                        1.0 + math.cos(
-                    math.pi * (iters - warmup_total_iters) / (total_iters - warmup_total_iters - no_aug_iter))
-                )
-            return lr
-    
-        def step_lr(lr, decay_rate, step_size, iters):
-            if step_size < 1:
-                raise ValueError("step_size must above 1.")
-            n = iters // step_size
-            out_lr = lr * decay_rate ** n
-            return out_lr
-    
-        if lr_decay_type == "cos":
-            # ------------------------------#
-            #   预热轮数不超过3轮  1~3
-            # ------------------------------#
-            warmup_total_iters = min(max(warmup_iters_ratio * total_iters, 1), 3)
-            warmup_lr_start = max(warmup_lr_ratio * lr, 1e-6)
-    
-            # ------------------------------#
-            #   最小学习率轮数不少于15轮
-            # ------------------------------#
-            no_aug_iter = min(max(no_aug_iter_ratio * total_iters, 1), 15)
-            func = partial(yolox_warm_cos_lr, lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter)
+```python
+# ------------------------------#
+#   学习率调整策略：预热+余弦退火
+# ------------------------------#
+def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=0.05, warmup_lr_ratio=0.1,
+                     no_aug_iter_ratio=0.05, step_num=10):
+    def yolox_warm_cos_lr(lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter, iters):
+        # 前3轮进行warmup预测
+        if iters <= warmup_total_iters:
+            lr = (lr - warmup_lr_start) * pow(iters / float(warmup_total_iters), 2) + warmup_lr_start
+        # 训练收官阶段，模型参数需要稳定，所以最后的15轮以最小的学习率进行训练
+        elif iters >= total_iters - no_aug_iter:
+            lr = min_lr
+
+        # ------------------------------#
+        # 中间轮数使用cos余弦退火策略
+        # cos余弦退火：cos(当前训练轮数/总训练轮数)
+        # ------------------------------#
         else:
-            decay_rate = (min_lr / lr) ** (1 / (step_num - 1))
-            step_size = total_iters / step_num
-            func = partial(step_lr, lr, decay_rate, step_size)
-    
-        return func
-    ```
+            lr = min_lr + 0.5 * (lr - min_lr) * (
+                    1.0 + math.cos(
+                math.pi * (iters - warmup_total_iters) / (total_iters - warmup_total_iters - no_aug_iter))
+            )
+        return lr
+
+    def step_lr(lr, decay_rate, step_size, iters):
+        if step_size < 1:
+            raise ValueError("step_size must above 1.")
+        n = iters // step_size
+        out_lr = lr * decay_rate ** n
+        return out_lr
+
+    if lr_decay_type == "cos":
+        # ------------------------------#
+        #   预热轮数不超过3轮  1~3
+        # ------------------------------#
+        warmup_total_iters = min(max(warmup_iters_ratio * total_iters, 1), 3)
+        warmup_lr_start = max(warmup_lr_ratio * lr, 1e-6)
+
+        # ------------------------------#
+        #   最小学习率轮数不少于15轮
+        # ------------------------------#
+        no_aug_iter = min(max(no_aug_iter_ratio * total_iters, 1), 15)
+        func = partial(yolox_warm_cos_lr, lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter)
+    else:
+        decay_rate = (min_lr / lr) ** (1 / (step_num - 1))
+        step_size = total_iters / step_num
+        func = partial(step_lr, lr, decay_rate, step_size)
+
+    return func
+```
 
 3、Adam、SGD 优化器
 _ _ _
