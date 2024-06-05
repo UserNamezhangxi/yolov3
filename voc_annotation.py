@@ -1,8 +1,5 @@
 import os
-import random
 import xml.etree.ElementTree as ET
-
-import numpy as np
 
 from utils.utils import get_classes
 

@@ -244,6 +244,9 @@ class YOLOLoss(nn.Module):
 
                 # 每个先验框对应真实框的最大重合度
                 anchor_iou_max, _ = torch.max(anch_ious, dim=0)
+                # 13*13* 3（种类型的锚框） 每一行（13个iou值）的网格点和对应锚框的交并比计算结果
+                # 共13 列
+                #  anchor_iou_max 最终计算的是 13*13 的网格上每一个网格点和 真实框的 iou 值  shape（3*13*13）
                 anchor_iou_max = anchor_iou_max.view(pre_boxes[b].size()[:3])
 
                 # 当前batch_size 的 对应位置的iou 是不是大于 阈值,
@@ -383,15 +386,23 @@ def weights_init(net, init_type='normal', init_gain = 0.02):
     print('initialize network with %s type' % init_type)
     net.apply(init_func)
 
-
+# ------------------------------#
+#   学习率调整策略：预热+余弦退火
+# ------------------------------#
 def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=0.05, warmup_lr_ratio=0.1,
                      no_aug_iter_ratio=0.05, step_num=10):
     def yolox_warm_cos_lr(lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter, iters):
+        # 前3轮进行warmup预测
         if iters <= warmup_total_iters:
-            # lr = (lr - warmup_lr_start) * iters / float(warmup_total_iters) + warmup_lr_start
             lr = (lr - warmup_lr_start) * pow(iters / float(warmup_total_iters), 2) + warmup_lr_start
+        # 训练收官阶段，模型参数需要稳定，所以最后的15轮以最小的学习率进行训练
         elif iters >= total_iters - no_aug_iter:
             lr = min_lr
+
+        # ------------------------------#
+        # 中间轮数使用cos余弦退火策略
+        # cos余弦退火：cos(当前训练轮数/总训练轮数)
+        # ------------------------------#
         else:
             lr = min_lr + 0.5 * (lr - min_lr) * (
                     1.0 + math.cos(
@@ -407,8 +418,15 @@ def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio=
         return out_lr
 
     if lr_decay_type == "cos":
+        # ------------------------------#
+        #   预热轮数不超过3轮  1~3
+        # ------------------------------#
         warmup_total_iters = min(max(warmup_iters_ratio * total_iters, 1), 3)
         warmup_lr_start = max(warmup_lr_ratio * lr, 1e-6)
+
+        # ------------------------------#
+        #   最小学习率轮数不少于15轮
+        # ------------------------------#
         no_aug_iter = min(max(no_aug_iter_ratio * total_iters, 1), 15)
         func = partial(yolox_warm_cos_lr, lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter)
     else:

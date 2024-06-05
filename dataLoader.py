@@ -18,16 +18,17 @@ class YoloDataset(Dataset):
         return len(self.lines)
 
     def __getitem__(self, index):
-        img, boxes = self.get_item_data(index)
+        img, boxes = self.get_item_data(index) # 获取图片和 ground truth
         image = np.transpose(preprocess_input(np.array(img, dtype=np.float32)), (2, 0, 1))
         boxes = np.array(boxes, dtype=np.float32)
 
         if len(boxes) != 0:
+            # ground truth 宽高进行归一化
             boxes[:, [0, 2]] = boxes[:, [0, 2]] / self.input_shape[1]
             boxes[:, [1, 3]] = boxes[:, [1, 3]] / self.input_shape[0]
 
-            boxes[:, 2:4] = boxes[:, 2:4] - boxes[:, 0:2]
-            boxes[:, 0:2] = boxes[:, 0:2] + boxes[:, 2:4] / 2
+            boxes[:, 2:4] = boxes[:, 2:4] - boxes[:, 0:2]  # 计算中心点xy
+            boxes[:, 0:2] = boxes[:, 0:2] + boxes[:, 2:4] / 2  # 计算 ground truth 的w,h
 
         return image, boxes
 
@@ -58,9 +59,7 @@ class YoloDataset(Dataset):
         # 计算缩放后的bnd box
         box = np.array([np.array(list(map(int, box.split(',')))) for box in item[1:]])
 
-        # 图形归一化
-        # image_data = image_data / 255.0
-        # bndbox 归一化
+        # bndbox 进行缩放后其他区域的填充操作 对应的 ground truth 框也需要进行dx dy 的偏移
         if len(box) > 0:
             box[:, [0, 2]] = box[:, [0, 2]] * nw/iw + dx
             box[:, [1, 3]] = box[:, [1, 3]] * nh/ih + dy
@@ -70,14 +69,6 @@ class YoloDataset(Dataset):
             box_w = box[:, 2] - box[:, 0]
             box_h = box[:, 3] - box[:, 1]
             box = box[np.logical_and(box_w > 1, box_h > 1)]  # discard invalid box
-            # print("缩放后的box={}{},{}{}".format(box[0,0], box[0,1],box[0,2], box[0,3]))
-
-            # x_min = box[0,0] * nw / scale
-            # y_min = box[0,1] * nh / scale
-            # x_max = box[0,2] * nw / scale
-            # y_max = box[0,3] * nh / scale
-            # print("计算原图的box {} {},{} {}".format(x_min,y_min,x_max,y_max))
-
         return image_data, box
 
 

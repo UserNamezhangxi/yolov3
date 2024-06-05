@@ -49,25 +49,34 @@ if not pretrained:
     weights_init(model)
 
 # ------------------------------------------------------#
-#   根据预训练权重的Key和模型的Key进行加载
+#   保存当前模型的权重
 # ------------------------------------------------------#
 model_dict = model.state_dict()
 
 # 将训练好的yolo网络权重加载进来， 和自己的yolo网络进行比对，加载已有的权重参数到自己的网络中来
 # 这就是迁移学习！！！
 if yolo_weight_pth != '':
+    # 从外部文件加载的预训练模型的权重
     pretrained_dict = torch.load(yolo_weight_pth, map_location=device)
 
     load_key, no_load_key, temp_dict = [], [], {}
+
+    # 循环遍历预训练权重字典：代码通过一个循环遍历 `pretrained_dict` 中的键-值对，其中键 `k` 是预训练权重的名称，值 `v` 是相应的权重张量。
     for k, v in pretrained_dict.items():
+        # 比较权重形状：对于每个键 `k`，代码检查它是否存在于当前模型的权重字典 `model_dict` 中，
+        # 并且检查权重的形状是否与当前模型中的权重形状相匹配。如果键 `k` 存在于 `model_dict` 中且形状匹配，
+        # 那么将这个权重添加到临时字典 `temp_dict` 中，并将键 `k` 添加到 `load_key` 列表中，表示这个权重需要加载。
         if k in model_dict.keys() and np.shape(model_dict[k]) == np.shape(v):
+            # 更新当前模型的权重字典：将临时字典 `temp_dict` 中的权重添加到当前模型的权重字典 `model_dict` 中，
+            # 以确保只有匹配的权重被加载，不匹配的权重不会破坏当前模型的结构
             temp_dict[k] = v
             load_key.append(k)
             print("load {}  shape {}".format(k, np.shape(model_dict[k])))
         else:
             no_load_key.append(k)
             print("no load {} ".format(k))
-
+    # 加载更新后的权重：最后，使用 `model.load_state_dict(model_dict)` 将更新后的权重加载到当前模型中，
+    # 从而将预训练的权重应用到当前模型中
     model_dict.update(temp_dict)
     model.load_state_dict(model_dict)
 
@@ -134,8 +143,6 @@ with open("2007_test.txt") as f:
     val_lines = f.readlines()
 num_train = len(train_lines)
 num_val = len(val_lines)
-
-
 
 
 loss_history = None # LossHistory(log_dir, model, input_shape=input_shape)
