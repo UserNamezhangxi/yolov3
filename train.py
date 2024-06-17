@@ -40,7 +40,7 @@ yolo_weight_pth = 'model/yolo_weights.pth'
 classes, classes_len = get_classes('dataset/voc_classes.txt')
 anchors, anchors_len = get_anchors('dataset/yolo_anchors.txt')
 anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
-
+input_shape = [416, 416]
 model = YoloNet(anchors_mask, classes_len, pretrained=pretrained)
 model.to(device)
 
@@ -85,8 +85,8 @@ if yolo_weight_pth != '':
     print("\n温馨提示，head部分没有载入是正常现象，Backbone部分没有载入是错误的。")
 
 
-train_dataset = YoloDataset("2007_train.txt", isTrain=True)
-test_dataset = YoloDataset("2007_test.txt", isTrain=False)
+train_dataset = YoloDataset("2007_train.txt", input_shape, isTrain=True)
+test_dataset = YoloDataset("2007_test.txt", input_shape, isTrain=False)
 
 
 # 构建dataloader
@@ -122,11 +122,10 @@ Freeze_batch_size = 16
 #                           Adam可以使用相对较小的UnFreeze_Epoch
 #   Unfreeze_batch_size     模型在解冻后的batch_size
 # ------------------------------------------------------------------#
-UnFreeze_Epoch = 100
+UnFreeze_Epoch = 300
 Unfreeze_batch_size = 8
 
-
-optimizer_type = 'adam'
+optimizer_type = 'sgd'
 Init_lr = 1e-3 if optimizer_type == 'adam' else 1e-2
 Min_lr = Init_lr * 0.01
 momentum = 0.937

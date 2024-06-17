@@ -7,10 +7,10 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.utils import cvtColor, preprocess_input
 
 class YoloDataset(Dataset):
-    def __init__(self, train_path, isTrain):
+    def __init__(self, train_path,input_shape, isTrain):
         super(YoloDataset, self).__init__()
         self.train_path = train_path
-        self.input_shape = (416, 416)
+        self.input_shape = input_shape
         self.isTrain = isTrain
 
         self.lines = open(train_path, 'r').readlines()
@@ -153,7 +153,7 @@ def yolo_dataset_collate(batch):
     # return images, bboxes
 
 if __name__ == "__main__":
-    dataset = YoloDataset('2007_train.txt', True)
+    dataset = YoloDataset('2007_train.txt', (416, 416), True)
     image, box = dataset[0]
     image_data = image.reshape(-1, image.shape[0], image.shape[1], image.shape[2])
     writer = SummaryWriter(log_dir='logs')

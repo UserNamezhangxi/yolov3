@@ -59,8 +59,8 @@ class YOLOLoss(nn.Module):
         y = torch.sigmoid(prediction[..., 1])  # 取最后一个维度的 第 1 轴的 数据
 
         # 先验框的宽高调整参数
-        h = prediction[..., 2]  # 取最后一个维度的 第 2 轴的 数据
-        w = prediction[..., 3]  # 取最后一个维度的 第 3 轴的 数据
+        w = prediction[..., 2]  # 取最后一个维度的 第 2 轴的 数据
+        h = prediction[..., 3]  # 取最后一个维度的 第 3 轴的 数据
         conf = torch.sigmoid(prediction[..., 4])  # 取最后一个维度的 第 4 轴的 数据 置信度
 
         # 获取分类结果的置信度
