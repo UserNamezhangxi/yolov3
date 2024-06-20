@@ -3,6 +3,7 @@
 # -*- coding:utf-8 -*-
 
 import colorsys
+import os.path
 
 import numpy as np
 import torch
@@ -153,6 +154,52 @@ class Yolo(object):
             del draw
 
         return image
+
+    def get_map_txt(self, image_id, image, map_out_path):
+        f = open(os.path.join(map_out_path, "detection-results/"+image_id+".txt"),'w')
+        image_shape = np.array(np.shape(image)[:2])
+
+        # 将输入图像转RGB图像格式
+        image = cvtColor(image)
+        # 对图像进行resize,不失真resize 增加灰条
+        image_data = resize_image(image, (self.input_shape[0], self.input_shape[1]), self.letterbox_image)
+        image_data = np.expand_dims(np.transpose(
+            preprocess_input(np.array(image_data, dtype='float32')), axes=(2, 0, 1)), axis=0)
+
+        with torch.no_grad():
+            images = torch.from_numpy(image_data)
+            images = images.to(self.device)
+
+            outputs = self.net(images)
+
+            # 对预测结果进行解码
+            outputs = self.bbox_util.decode_box(outputs)
+
+            # 进行非极大值抑制
+            results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape,
+                        image_shape, self.letterbox_image, conf_thres = self.confidence, nms_thres = self.nms_iou)
+
+            if results[0] is None:
+                return
+
+            top_label = np.array(results[0][:, 6], dtype='int32')
+            top_conf = results[0][:, 4] * results[0][:, 5]
+            top_boxes = results[0][:, :4]
+
+            for i, c in list(enumerate(top_label)):
+                predict_class = self.class_names[int(c)]
+                box = top_boxes[i]
+                score = str(top_conf[i])
+
+                top, left, bottom, right = box
+                if predict_class not in self.class_names:
+                    continue
+
+                f.write("%s %s %s %s %s %s\n"
+                        % (predict_class, score[:6], str(int(left)), str(int(top)), str(int(right)), str(int(bottom))))
+
+            f.close()
+            return
 
 
 if __name__ == "__main__":
